@@ -45,7 +45,7 @@ AC_MSG_CHECKING([for Borealis])
 
 # sensible default if nothing specified
 if test "x$with_borealis" = x; then
-    with_borealis=../src
+    with_borealis=$BOREALIS_HOME/src
 fi
 
 if test -f "$with_borealis/src/borealis.cc"; then
@@ -385,4 +385,9 @@ BOREALISINCLUDE="$NMSTLINCLUDE $XERCESCINCLUDE $ANTLRINCLUDE"
 AC_SUBST(BOREALISINCLUDE)
 
 
-AC_OUTPUT(Makefile marshal/Makefile head/Makefile statsView/Makefile statsView/src/Makefile monitor/Makefile monitor/src/Makefile optimizer/Makefile optimizer/loadManager/Makefile optimizer/loadShedder/Makefile loadGenerator/Makefile loadGenerator/simple/Makefile loadGenerator/wlgen/Makefile client/Makefile padmin/Makefile)
+AC_OUTPUT(Makefile marshal/Makefile head/Makefile statsView/Makefile \
+        statsView/src/Makefile monitor/Makefile monitor/src/Makefile \
+        optimizer/Makefile optimizer/loadManager/Makefile \
+        optimizer/loadShedder/Makefile loadGenerator/Makefile \
+        loadGenerator/simple/Makefile loadGenerator/wlgen/Makefile \
+        client/Makefile padmin/Makefile congerAdmin/Makefile)

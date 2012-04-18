@@ -72,6 +72,10 @@ class QueryProcessor : public BasicComponent
                                   // Provide access to the QueryProcessor.
                                   QueryProcessor   &query_processor);
     
+    /// 这个方法在 CongerProcessor.cc 里实现 by hellojinjie
+    ///
+    AsyncRPC<void> add_conger_string(string conger_config);
+
  private:
 
     ////////////////////////////////////////////////////////////////////////////

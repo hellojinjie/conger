@@ -2,7 +2,7 @@ MYFLAGS =
 AM_CFLAGS = @CFLAGS@ $(MYFLAGS)
 AM_CXXFLAGS = @CXXFLAGS@ $(MYFLAGS)
 
-MAIN = enqueue dequeue #enqueueAndDequeue
+MAIN = congeradmin
 
 bin_PROGRAMS = $(MAIN)
 
@@ -27,8 +27,4 @@ INCLUDES = @XERCESCINCLUDE@  @NMSTLINCLUDE@                            \
            -I ../../utility/client/region                              \
            -I ../../utility/client/rpc
 
-enqueue_SOURCES = Enqueue.cc Enqueue.h StockTuple.h
-
-dequeue_SOURCES = Dequeue.cc Dequeue.h StockTuple.h
-
-enqueueAndDequeue_SOURCES = EnqueueAndDequeue.cc 
+congeradmin_SOURCES = CongerAdmin.cc 
