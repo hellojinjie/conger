@@ -2,8 +2,8 @@ grammar CongerCQL;
 
 options
 {
-    // language=C;
-    // ASTLabelType=pANTLR3_BASE_TREE;
+    //language=C;
+    //ASTLabelType=pANTLR3_BASE_TREE;
     ASTLabelType=CommonTree;
     output=AST;
     backtrack=false;
@@ -43,6 +43,7 @@ tokens
 	TOK_RELATION_LIST;
 	TOK_USING;
 	TOK_FUNC;
+	TOK_ARITH_EXPR;
 }
 
 // starting rule
@@ -82,8 +83,8 @@ sfw_block
     | order_by_clause
     | opt_where_clause opt_group_by_clause? opt_having_clause?
 	)
-        -> ^(TOK_SFW select_clause from_clause order_by_clause? opt_where_clause? 
-            opt_group_by_clause? opt_having_clause?)
+        -> ^(TOK_SFW select_clause from_clause order_by_clause? 
+        opt_where_clause? opt_group_by_clause? opt_having_clause?)
 	;
 	
 select_clause
@@ -92,7 +93,7 @@ select_clause
 	;
 
 non_mt_projterm_list
-	: projterm (options{greedy=true;}: COMMA non_mt_projterm_list)*
+	: projterm (options{greedy=true;}: COMMA projterm)*
         -> ^(TOK_PROJTERM_LIST projterm+)
 	;
 
@@ -104,7 +105,7 @@ projterm
 arith_expr
 	: arith_expr_main (arith_expr_operator arith_expr_main)?
         // 这里的抽象树能不能后两个用一个括号括起，再加一个问号
-        -> ^(arith_expr_main arith_expr_operator? arith_expr_main?)
+        -> ^(TOK_ARITH_EXPR arith_expr_main arith_expr_operator? arith_expr_main?)
 	;
 
 arith_expr_operator
@@ -114,9 +115,9 @@ arith_expr_operator
 arith_expr_main
 	: attr
 	| const_value
-	| func_expr
 	| aggr_expr
 	| aggr_distinct_expr
+	| func_expr
     // 不支持正负, 这个歧义如何消除
 	// | (PLUS | MINUS) arith_expr
 	| LPAREN arith_expr RPAREN
@@ -289,10 +290,8 @@ aggr_expr
         -> ^(TOK_AGGR KW_COUNT arith_expr? STAR?)
 	| ( (KW_SUM | KW_AVG) LPAREN arith_expr
 		| ( KW_MAX | KW_MIN) LPAREN arith_expr
-		| ( KW_FIRST | KW_LAST) LPAREN name1=Identifier (DOT name2=Identifier)?
 	) RPAREN
-        -> ^(TOK_AGGR KW_SUM? KW_AVG?  KW_MAX? KW_MIN? arith_expr? 
-             KW_FIRST? KW_LAST? $name1? $name2?)
+        -> ^(TOK_AGGR KW_SUM? KW_AVG? KW_MAX KW_MIN? arith_expr)
 	;
 
 func_expr

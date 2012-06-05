@@ -20,7 +20,8 @@ typedef struct DeployDescriptStruct
     std::map<std::string, std::map<std::string, std::string> > schemas;
 
     /* std::map<streamName, schema> streams */
-    std::map<std::string, std::string> streams;
+    std::map<std::string, std::string> inputStreams;
+    std::map<std::string, std::string> outputStreams;
 
     /* std::map<queryName, std::map<parament, value> > querys
      * 如果有多个输入流，则多个输入流用冒号隔开,例: <in, stream1:stream2>

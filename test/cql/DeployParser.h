@@ -12,6 +12,11 @@
 #include <string>
 #include <xercesc/dom/DOM.hpp>
 
+#include "common.h"
+
+
+BOREALIS_NAMESPACE_BEGIN
+
 class DeployParser
 {
 public:
@@ -31,5 +36,7 @@ private:
 
 	std::string getChildText(xercesc::DOMNode* node);
 };
+
+BOREALIS_NAMESPACE_END
 
 #endif /* DEPLOYPARSER_H_ */
