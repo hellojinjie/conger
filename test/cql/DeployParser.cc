@@ -11,14 +11,15 @@
 #include <xercesc/sax/HandlerBase.hpp>
 #include <xercesc/util/XMLString.hpp>
 #include <xercesc/util/PlatformUtils.hpp>
-
+#include <NMSTL/debug>
 #include <iostream>
 
-using namespace std;
+
+BOREALIS_NAMESPACE_BEGIN
 using namespace xercesc;
 
 /**
- * Xercesc 的内存管理真不懂。。这里的内存释放操作都没有做。
+ * XXX Xercesc 的内存管理真不懂。。这里的内存释放操作都没有做。
  */
 DeployParser::DeployParser()
 {
@@ -29,7 +30,7 @@ DeployParser::DeployParser()
     catch (const XMLException& toCatch)
     {
         char* message = XMLString::transcode(toCatch.getMessage());
-        cout << "Failed to initialize xml: " << message <<  endl;
+        DEBUG << "Failed to initialize xml: " << message;
         XMLString::release(&message);
         exit(1);
     }
@@ -49,7 +50,7 @@ DeployDescript DeployParser::parse(string deployFilename)
      }
      catch (...)
      {
-         cout << "I catch something" << endl;
+         DEBUG << "I catch something";
          return this->deploy;
      }
 
@@ -68,7 +69,7 @@ DeployDescript DeployParser::parse(string deployFilename)
          this->parseDeployName(deployNameNodeList->item(0));
      }
 
-     cout << this->deploy.deployName << endl;
+     DEBUG << this->deploy.deployName;
 
      XMLCh* schemasTagName = XMLString::transcode("schemas");
      DOMNodeList* schemasNodeList = document->getElementsByTagName(schemasTagName);
@@ -140,10 +141,10 @@ void DeployParser::parseSchemas(xercesc::DOMNode* schemasDOM)
                           = string(XMLString::transcode(typeXML));
             }
         }
-        cout << "schema name: " << schemaName << endl;
+        DEBUG << "schema name: " << schemaName;
         for (map<string, string>::iterator iterator =  schemaMap.begin(); iterator != schemaMap.end(); iterator++)
         {
-            cout << iterator->first << " " << iterator->second << endl;
+            DEBUG << iterator->first << " " << iterator->second;
         }
         this->deploy.schemas[schemaName] = schemaMap;
     }
@@ -161,15 +162,29 @@ void DeployParser::parseStreams(xercesc::DOMNode* streamsDOM)
         DOMNamedNodeMap* streamAttributes = schemaNodeList->item(i)->getAttributes();
         const XMLCh* nameXML = streamAttributes
                 ->getNamedItem(XMLString::transcode("name"))->getNodeValue();
+        const XMLCh* typeXML = streamAttributes
+                ->getNamedItem(XMLString::transcode("type"))->getNodeValue();
         const XMLCh* schemaXML = streamAttributes
                 ->getNamedItem(XMLString::transcode("schema"))->getNodeValue();
         string name = string(XMLString::transcode(nameXML));
+        string type = string(XMLString::transcode(typeXML));
         string schema = string(XMLString::transcode(schemaXML));
-        if (this->deploy.streams.find(name) != this->deploy.streams.end())
+        if (type == "input")
         {
-            this->deploy.streams[name] = schema;
+            if (this->deploy.inputStreams.find(name) != this->deploy.inputStreams.end())
+            {
+                this->deploy.inputStreams[name] = schema;
+            }
         }
-        cout << "stream name: " << name << " schema " << schema << endl;
+        else if (type == "output")
+        {
+            if (this->deploy.outputStreams.find(name) != this->deploy.outputStreams.end())
+            {
+                this->deploy.outputStreams[name] = schema;
+            }
+        }
+
+        DEBUG << "stream name: " << name << " schema " << schema << " type" << type;
     }
 }
 
@@ -198,7 +213,7 @@ void DeployParser::parseQuerys(xercesc::DOMNode* querysDOM)
             }
             const XMLCh* nodeNameXML = node->getNodeName();
             string nodeName = string(XMLString::transcode(nodeNameXML));
-            cout << nodeName << endl;
+            DEBUG << nodeName;
             if (nodeName == "in")
             {
                 if (query[string("in")] == "")
@@ -221,11 +236,11 @@ void DeployParser::parseQuerys(xercesc::DOMNode* querysDOM)
             }
         }
         this->deploy.querys[queryName] = query;
-        cout << "query name: " << queryName << endl;
+        DEBUG << "query name: " << queryName;
         for (map<string, string>::iterator iterator =  query.begin();
                 iterator != query.end(); iterator++)
         {
-            cout << iterator->first << ": " << iterator->second << endl;
+            DEBUG << iterator->first << ": " << iterator->second;
         }
     }
 }
@@ -246,7 +261,7 @@ string DeployParser::getChildText(DOMNode* node)
             }
             catch (DOMException &e)
             {
-                cout << "DOMText:" << XMLString::transcode(e.getMessage()) << endl;
+                DEBUG << "DOMText:" << XMLString::transcode(e.getMessage());
             }
         }
         else if (child->getNodeType() == DOMNode::CDATA_SECTION_NODE)
@@ -258,9 +273,11 @@ string DeployParser::getChildText(DOMNode* node)
             }
             catch (DOMException &e)
             {
-                cout << "DOMCDATASection:"  << XMLString::transcode(e.getMessage()) << endl;
+                DEBUG << "DOMCDATASection:"  << XMLString::transcode(e.getMessage());
             }
         }
     }
     return text;
 }
+
+BOREALIS_NAMESPACE_END

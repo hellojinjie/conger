@@ -17,7 +17,7 @@ LDADD = -L../modules/queryProcessor        -lborealisqp          \
         -L../modules/optimizer/nhopt       -lborealisnhopt       \
         -L../modules/optimizer/local       -lborealislopt        \
         -L../modules/common                -lborealiscommon      \
-        -L../modules/util                  -lborealisutil
+        -L../modules/util                  -lborealisutil        
 
 INCLUDES = @BOREALISINCLUDE@   @EXTERNALINCLUDE@               \
            -I../modules/common                                 \
@@ -30,6 +30,7 @@ INCLUDES = @BOREALISINCLUDE@   @EXTERNALINCLUDE@               \
            -I../modules/ha                                     \
            -I../modules/queryProcessor                         \
            -I../modules/queryProcessor/runtime                 \
+           -I../modules/queryProcessor/congerDeploy            \
            -I../modules/queryProcessor/storageMgr              \
            -I../modules/queryProcessor/statsMgr                \
            -I../modules/queryProcessor/expr                    \
@@ -60,5 +61,5 @@ monitor_SOURCES = monitor.cc
 
 conger_LDADD = $(borealis_LDADD)
 conger_DEPENDENCIES = $(borealis_DEPENDENCIES)
-conger_SOURCES = $(borealis_SOURCES)
+conger_SOURCES = conger.cc
 
