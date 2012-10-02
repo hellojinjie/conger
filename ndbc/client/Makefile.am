@@ -2,9 +2,7 @@ MYFLAGS =
 AM_CFLAGS = @CFLAGS@ $(MYFLAGS)
 AM_CXXFLAGS = @CXXFLAGS@ $(MYFLAGS)
 
-MAIN = enqueue enqueueUnion dequeue dequeueFilter dequeueMap \
-	dequeueJoin dequeueAggregate dequeueAggregateJoin \
-	dequeueFilterMap #enqueueAndDequeue
+MAIN = test_dequeue_statistics test_dequeue_segementtoll
 
 bin_PROGRAMS = $(MAIN)
 
@@ -14,38 +12,24 @@ LDADD = -L@BOREALISROOT@/modules/catalog               -lborealiscatalog  \
         -L@BOREALISROOT@/modules/ha                    -lborealisha       \
         -L@BOREALISROOT@/modules/queryProcessor        -lborealisqp       \
         -L@BOREALISROOT@/external                      -lborealisexternal \
-        -L../../utility/client/region                  -lborealisregion   \
+        -L@BOREALISROOT@/../utility/client/region                  -lborealisregion   \
         -L@BOREALISROOT@/modules/common                -lborealiscommon   \
         -L@BOREALISROOT@/modules/util                  -lborealisutil     \
         -L@BOREALISROOT@/modules/cql                   -lcongercql        \
         $(LDADD_EXTRAS)
 
-INCLUDES = @XERCESCINCLUDE@  @NMSTLINCLUDE@                            \
+INCLUDES = @XERCESCINCLUDE@  @NMSTLINCLUDE@                        \
            -I@BOREALISROOT@/modules/common                         \
            -I@BOREALISROOT@/modules/util                           \
            -I@BOREALISROOT@/modules/catalog                        \
            -I@BOREALISROOT@/modules/queryProcessor                 \
            -I@BOREALISROOT@/modules/queryProcessor/statsMgr        \
            -I@BOREALISROOT@/modules/rpc                            \
-           -I ../../utility/client/region                              \
-           -I ../../utility/client/rpc
+           -I@BOREALISROOT@/../utility/client/region               \
+           -I@BOREALISROOT@/../utility/client/rpc
 
-enqueue_SOURCES = Enqueue.cc Enqueue.h StockTuple.h
+test_dequeue_statistics_SOURCES = TestDequeueStatistics.cc \
+	TrafficOutputTuple.h
 
-dequeue_SOURCES = Dequeue.cc Dequeue.h StockTuple.h
-
-enqueueAndDequeue_SOURCES = EnqueueAndDequeue.cc 
-
-dequeueFilter_SOURCES = DequeueFilter.cc StockTuple.h
-
-dequeueMap_SOURCES = DequeueMap.cc StockTuple.h
-
-dequeueJoin_SOURCES = DequeueJoin.cc StockTuple.h
-
-dequeueAggregate_SOURCES = DequeueAggregate.cc StockTuple.h
-
-enqueueUnion_SOURCES =EnqueueUnion.cc StockTuple.h
-
-dequeueAggregateJoin_SOURCES = DequeueAggregateJoin.cc StockTuple.h
-
-dequeueFilterMap_SOURCES = DequeueFilterMap.cc StockTuple.h
+test_dequeue_segementtoll_SOURCES = TestDequeueSegementToll.cc \
+ 	TrafficOutputTuple.h

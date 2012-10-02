@@ -142,33 +142,21 @@ void QueryProcessor::add_conger_input(DeployDescript deploy_descript)
 
 void QueryProcessor::add_conger_query(DeployDescript deploy_descript)
 {
-    map<string, map<string, string> >::iterator query_iterator;
+    list<pair<string, map<string, string> > >::iterator query_iterator;
     for (query_iterator = deploy_descript.querys.begin();
             query_iterator != deploy_descript.querys.end();
             query_iterator++)
     {
-        string query_name = query_iterator->first;
-        map<string, string> query_parameters = query_iterator->second;
+        pair<string, map<string, string> > query = *query_iterator;
+        string query_name = query.first;
+        map<string, string> query_parameters = query.second;
 
         string cql = query_parameters["cql"];
+        string output_stream = query_parameters["out"];
 
         ParseDriver driver;
-        ParseContext context = driver.parse(query_name, cql);
+        ParseContext context = driver.parse(query_name, cql, output_stream);
         this->transform_cql_to_boxes(context);
-
-        /* 下面的代码是用来直接测试 box 用的
-        map<string, string> box_parameters;
-        box_parameters["aggregate-function.0"] = "max(price)";
-        box_parameters["aggregate-function-output-name.0"] = "price";
-        box_parameters["window-size-by"] = "VALUES";
-        box_parameters["window-size"] = "600";
-        box_parameters["advance"] = "10";
-        box_parameters["order-by"] = "FIELD";
-        box_parameters["order-on-field"] = "time";
-
-        add_conger_box("cql_test", "aggregate", "inputstream",
-                "outputstream", box_parameters);
-        */
     }
 }
 
@@ -272,11 +260,16 @@ void QueryProcessor::add_conger_box(string box_name, string type, string in_stre
 void QueryProcessor::add_conger_subscribe(DeployDescript deploy_descript)
 {
 
-    CatalogSubscription subscriber;
-    subscriber = _local_catalog.add_conger_subsribe("outputstream", "127.0.0.1:25000", "");
-
     vector<CatalogSubscription>  subs;
-    subs.push_back(subscriber);
+    map<string, string>::iterator iter = deploy_descript.outputStreams.begin();
+    for ( ; iter != deploy_descript.outputStreams.end(); iter++)
+    {
+        CatalogSubscription subscriber;
+        subscriber = _local_catalog.add_conger_subsribe(iter->first, "127.0.0.1:25000", "");
+
+        subs.push_back(subscriber);
+    }
+
 
     AsyncRPC<void> completion;
     completion.post(true);
