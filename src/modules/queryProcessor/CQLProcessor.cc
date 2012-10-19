@@ -13,6 +13,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/foreach.hpp>
+#include <fstream>
 
 BOREALIS_NAMESPACE_BEGIN
 
@@ -56,7 +57,7 @@ void QueryProcessor::transform_cql_map(ParseContext& context)
         box_parameters["output-field-name." + lexical_cast<string>(index)] = term.alias;
         index = index + 1;
     }
-
+    this->dump_box_parameters(context.query_name, box_parameters);
     add_conger_box(context.query_name, "map", context.from_stream.stream_name,
            context.output_stream, box_parameters);
 }
@@ -67,6 +68,7 @@ void QueryProcessor::transform_cql_filter(ParseContext& context)
     box_parameters["expression.0"] = context.where.condition;
     box_parameters["pass-on-false-port"] = "0";
 
+    this->dump_box_parameters(context.query_name, box_parameters);
     add_conger_box(context.query_name, "filter", context.from_stream.stream_name,
             context.output_stream, box_parameters);
 }
@@ -90,16 +92,9 @@ void QueryProcessor::transform_cql_join(ParseContext& context)
     {
         string output_key = "out-field." + lexical_cast<string>(index);
         string output_name_key = "out-field-name." + lexical_cast<string>(index);
-        to_lower(select_iter->expression);
-        box_parameters[output_key] = select_iter->expression;
-        if (select_iter->alias.empty())
-        {
-            box_parameters[output_name_key] = "join-outpt-" + lexical_cast<string>(index);
-        }
-        else
-        {
-            box_parameters[output_name_key] = select_iter->alias;
-        }
+        to_lower(select_iter->join_expression);
+        box_parameters[output_key] = select_iter->join_expression;
+        box_parameters[output_name_key] = select_iter->alias;
         index++;
     }
 
@@ -114,11 +109,11 @@ void QueryProcessor::transform_cql_join(ParseContext& context)
     else
     {
         box_parameters["left-order-by"] = "TUPLES";
-        box_parameters["left-buffer-size"] = lexical_cast<string>(left_window.range);
+        box_parameters["left-buffer-size"] = lexical_cast<string>(left_window.row);
     }
 
     WindowDefinition right_window = context.stream_join.stream.window;
-    if (left_window.type == CQL::VALUES)
+    if (right_window.type == CQL::VALUES)
     {
         box_parameters["right-order-by"] = "VALUES";
         box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.range);
@@ -127,13 +122,14 @@ void QueryProcessor::transform_cql_join(ParseContext& context)
     else
     {
         box_parameters["right-order-by"] = "TUPLES";
-        box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.range);
+        box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.row);
     }
 
     /* on, predicate */
     to_lower(context.stream_join.condition);
     box_parameters["predicate"] = context.stream_join.condition;
 
+    this->dump_box_parameters(context.query_name, box_parameters);
     string inputstreams = context.from_stream.stream_name + ":"
             + context.stream_join.stream.stream_name;
     add_conger_box(context.query_name, "join", inputstreams, context.output_stream, box_parameters);
@@ -169,6 +165,7 @@ void QueryProcessor::transform_cql_aggregate(ParseContext& context)
         }
     }
 
+
     /* 判断一下有没有 group by 语句
      * XXX 如何判断一个结构体有没有初始化? */
     if (context.has_group_by)
@@ -177,6 +174,7 @@ void QueryProcessor::transform_cql_aggregate(ParseContext& context)
         if (window.type == CQL::VALUES)
         {
             box_parameters["window-size-by"] = "VALUES";
+            box_parameters["timeout"] = lexical_cast<string>(window.range);
             /* XXX 时间单位的换算有问题 */
             box_parameters["window-size"] = lexical_cast<string>(window.range);
             box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -186,7 +184,7 @@ void QueryProcessor::transform_cql_aggregate(ParseContext& context)
         else
         {
             box_parameters["window-size-by"] = "TUPLES";
-            box_parameters["window-size"] = lexical_cast<string>(window.range);
+            box_parameters["window-size"] = lexical_cast<string>(window.row);
             box_parameters["advance"] = lexical_cast<string>(window.slide);
             box_parameters["order-by"] = "TUPLENUM";
         }
@@ -209,6 +207,7 @@ void QueryProcessor::transform_cql_aggregate(ParseContext& context)
         if (window.type == CQL::VALUES)
         {
             box_parameters["window-size-by"] = "VALUES";
+            box_parameters["timeout"] = lexical_cast<string>(window.range);
             /* XXX 时间单位的换算有问题 */
             box_parameters["window-size"] = lexical_cast<string>(window.range);
             box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -218,7 +217,7 @@ void QueryProcessor::transform_cql_aggregate(ParseContext& context)
         else
         {
             box_parameters["window-size-by"] = "TUPLES";
-            box_parameters["window-size"] = lexical_cast<string>(window.range);
+            box_parameters["window-size"] = lexical_cast<string>(window.row);
             box_parameters["advance"] = lexical_cast<string>(window.slide);
             box_parameters["order-by"] = "TUPLENUM";
         }
@@ -236,6 +235,7 @@ void QueryProcessor::transform_cql_aggregate(ParseContext& context)
         }
     }
 
+    this->dump_box_parameters(context.query_name, box_parameters);
     add_conger_box(context.query_name, "aggregate", context.from_stream.stream_name,
             context.output_stream, box_parameters);
 }
@@ -251,20 +251,23 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         box_parameters["expression.0"] = context.where.condition;
         box_parameters["pass-on-false-port"] = "0";
 
+        this->dump_box_parameters(context.query_name + "_filter", box_parameters);
         add_conger_box(context.query_name + "_filter", "filter", context.from_stream.stream_name,
                 context.query_name + "intermediate_outputstream", box_parameters);
 
         /* 第二步， map */
         box_parameters.clear();
         int index = 0;
+        using boost::lexical_cast;
         BOOST_FOREACH(const ProjectionTerm& term, context.select_list)
         {
-            box_parameters["expression." + index] = term.expression;
+            box_parameters["expression." + lexical_cast<string>(index)] = term.expression;
             /* 前面解析的时候，已经保证了 alias 都是有值的 */
-            box_parameters["output-field-name." + index] = term.alias;
+            box_parameters["output-field-name." + lexical_cast<string>(index)] = term.alias;
             index = index + 1;
         }
 
+        this->dump_box_parameters(context.query_name + "_map", box_parameters);
         add_conger_box(context.query_name + "_map", "map", context.query_name + "intermediate_outputstream",
                context.output_stream, box_parameters);
     }
@@ -302,6 +305,8 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             }
         }
 
+        box_parameters["slack"] = "0";
+
         /* 判断一下有没有 group by 语句 */
         if (context.has_group_by)
         {
@@ -309,6 +314,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             if (window.type == CQL::VALUES)
             {
                 box_parameters["window-size-by"] = "VALUES";
+                box_parameters["timeout"] = lexical_cast<string>(window.range);
                 /* XXX 时间单位的换算有问题 */
                 box_parameters["window-size"] = lexical_cast<string>(window.range);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -318,7 +324,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             else
             {
                 box_parameters["window-size-by"] = "TUPLES";
-                box_parameters["window-size"] = lexical_cast<string>(window.range);
+                box_parameters["window-size"] = lexical_cast<string>(window.row);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
                 box_parameters["order-by"] = "TUPLENUM";
             }
@@ -341,6 +347,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             if (window.type == CQL::VALUES)
             {
                 box_parameters["window-size-by"] = "VALUES";
+                box_parameters["timeout"] = lexical_cast<string>(window.range);
                 /* XXX 时间单位的换算有问题 */
                 box_parameters["window-size"] = lexical_cast<string>(window.range);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -350,7 +357,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             else
             {
                 box_parameters["window-size-by"] = "TUPLES";
-                box_parameters["window-size"] = lexical_cast<string>(window.range);
+                box_parameters["window-size"] = lexical_cast<string>(window.row);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
                 box_parameters["order-by"] = "TUPLENUM";
             }
@@ -368,6 +375,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             }
         }
 
+        this->dump_box_parameters(context.query_name + "_aggregate", box_parameters);
         add_conger_box(context.query_name + "_aggregate", "aggregate", context.from_stream.stream_name,
                 context.query_name + "intermediate_outputstream", box_parameters);
 
@@ -382,6 +390,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             index = index + 1;
         }
 
+        this->dump_box_parameters(context.query_name + "_map", box_parameters);
         add_conger_box(context.query_name + "_map", "map", context.query_name + "intermediate_outputstream",
                 context.output_stream, box_parameters);
     }
@@ -416,6 +425,8 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             }
         }
 
+        box_parameters["slack"] = "0";
+
         /* 判断一下有没有 group by 语句 */
         if (context.has_group_by)
         {
@@ -423,6 +434,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             if (window.type == CQL::VALUES)
             {
                 box_parameters["window-size-by"] = "VALUES";
+                box_parameters["timeout"] = lexical_cast<string>(window.range);
                 /* XXX 时间单位的换算有问题 */
                 box_parameters["window-size"] = lexical_cast<string>(window.range);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -432,7 +444,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             else
             {
                 box_parameters["window-size-by"] = "TUPLES";
-                box_parameters["window-size"] = lexical_cast<string>(window.range);
+                box_parameters["window-size"] = lexical_cast<string>(window.row);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
                 box_parameters["order-by"] = "TUPLENUM";
             }
@@ -455,6 +467,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             if (window.type == CQL::VALUES)
             {
                 box_parameters["window-size-by"] = "VALUES";
+                box_parameters["timeout"] = lexical_cast<string>(window.range);
                 /* XXX 时间单位的换算有问题 */
                 box_parameters["window-size"] = lexical_cast<string>(window.range);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -464,7 +477,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             else
             {
                 box_parameters["window-size-by"] = "TUPLES";
-                box_parameters["window-size"] = lexical_cast<string>(window.range);
+                box_parameters["window-size"] = lexical_cast<string>(window.row);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
                 box_parameters["order-by"] = "TUPLENUM";
             }
@@ -482,6 +495,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             }
         }
 
+        this->dump_box_parameters(context.query_name + "_aggregate", box_parameters);
         add_conger_box(context.query_name + "_aggregate", "aggregate", context.from_stream.stream_name,
                 context.query_name + "intermediate_outputstream", box_parameters);
 
@@ -490,6 +504,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         box_parameters["expression.0"] = context.having.condition;
         box_parameters["pass-on-false-port"] = "0";
 
+        this->dump_box_parameters(context.query_name + "_filter", box_parameters);
         add_conger_box(context.query_name + "_filter", "filter",
                 context.query_name + "intermediate_outputstream", context.output_stream, box_parameters);
 
@@ -536,7 +551,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         else
         {
             box_parameters["left-order-by"] = "TUPLES";
-            box_parameters["left-buffer-size"] = lexical_cast<string>(left_window.range);
+            box_parameters["left-buffer-size"] = lexical_cast<string>(left_window.row);
         }
 
         WindowDefinition right_window = context.stream_join.stream.window;
@@ -549,16 +564,17 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         else
         {
             box_parameters["right-order-by"] = "TUPLES";
-            box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.range);
+            box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.row);
         }
 
         /* on, predicate */
         to_lower(context.stream_join.condition);
         box_parameters["predicate"] = context.stream_join.condition;
 
+        this->dump_box_parameters(context.query_name + "_join", box_parameters);
         string inputstreams = context.from_stream.stream_name + ":"
                 + context.stream_join.stream.stream_name;
-        add_conger_box(context.query_name, "join", inputstreams,
+        add_conger_box(context.query_name + "_join", "join", inputstreams,
                 context.query_name + "intermediate_outputstream", box_parameters);
 
         /* 第二步，filter */
@@ -603,11 +619,11 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         else
         {
             box_parameters["left-order-by"] = "TUPLES";
-            box_parameters["left-buffer-size"] = lexical_cast<string>(left_window.range);
+            box_parameters["left-buffer-size"] = lexical_cast<string>(left_window.row);
         }
 
         WindowDefinition right_window = context.stream_join.stream.window;
-        if (left_window.type == CQL::VALUES)
+        if (right_window.type == CQL::VALUES)
         {
             box_parameters["right-order-by"] = "VALUES";
             box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.range);
@@ -616,13 +632,14 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         else
         {
             box_parameters["right-order-by"] = "TUPLES";
-            box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.range);
+            box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.row);
         }
 
         /* on, predicate */
         to_lower(context.stream_join.condition);
         box_parameters["predicate"] = context.stream_join.condition;
 
+        this->dump_box_parameters(context.query_name + "_join", box_parameters);
         string inputstreams = context.from_stream.stream_name + ":"
                 + context.stream_join.stream.stream_name;
         add_conger_box(context.query_name + "_join", "join", inputstreams,
@@ -639,6 +656,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             index = index + 1;
         }
 
+        this->dump_box_parameters(context.query_name + "_map", box_parameters);
         add_conger_box(context.query_name + "_map", "map", context.query_name + "intermediate_outputstream",
                 context.output_stream, box_parameters);
     }
@@ -675,11 +693,11 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         else
         {
             box_parameters["left-order-by"] = "TUPLES";
-            box_parameters["left-buffer-size"] = lexical_cast<string>(left_window.range);
+            box_parameters["left-buffer-size"] = lexical_cast<string>(left_window.row);
         }
 
         WindowDefinition right_window = context.stream_join.stream.window;
-        if (left_window.type == CQL::VALUES)
+        if (right_window.type == CQL::VALUES)
         {
             box_parameters["right-order-by"] = "VALUES";
             box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.range);
@@ -688,13 +706,14 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         else
         {
             box_parameters["right-order-by"] = "TUPLES";
-            box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.range);
+            box_parameters["right-buffer-size"] = lexical_cast<string>(right_window.row);
         }
 
         /* on, predicate */
         to_lower(context.stream_join.condition);
         box_parameters["predicate"] = context.stream_join.condition;
 
+        this->dump_box_parameters(context.query_name + "_join", box_parameters);
         string inputstreams = context.from_stream.stream_name + ":"
                 + context.stream_join.stream.stream_name;
         add_conger_box(context.query_name + "_join", "join", inputstreams,
@@ -726,6 +745,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
                 index++;
             }
         }
+        box_parameters["slack"] = "0";
 
         /* 判断一下有没有 group by 语句 */
         if (context.has_group_by)
@@ -734,6 +754,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             if (window.type == CQL::VALUES)
             {
                 box_parameters["window-size-by"] = "VALUES";
+                box_parameters["timeout"] = lexical_cast<string>(window.range);
                 /* XXX 时间单位的换算有问题 */
                 box_parameters["window-size"] = lexical_cast<string>(window.range);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -743,7 +764,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             else
             {
                 box_parameters["window-size-by"] = "TUPLES";
-                box_parameters["window-size"] = lexical_cast<string>(window.range);
+                box_parameters["window-size"] = lexical_cast<string>(window.row);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
                 box_parameters["order-by"] = "TUPLENUM";
             }
@@ -766,6 +787,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             if (window.type == CQL::VALUES)
             {
                 box_parameters["window-size-by"] = "VALUES";
+                box_parameters["timeout"] = lexical_cast<string>(window.range);
                 /* XXX 时间单位的换算有问题 */
                 box_parameters["window-size"] = lexical_cast<string>(window.range);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -775,7 +797,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             else
             {
                 box_parameters["window-size-by"] = "TUPLES";
-                box_parameters["window-size"] = lexical_cast<string>(window.range);
+                box_parameters["window-size"] = lexical_cast<string>(window.row);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
                 box_parameters["order-by"] = "TUPLENUM";
             }
@@ -793,6 +815,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             }
         }
 
+        this->dump_box_parameters(context.query_name + "_aggregate", box_parameters);
         add_conger_box(context.query_name + "_aggregate", "aggregate",
                 context.query_name + "intermediate_outputstream", context.output_stream, box_parameters);
 
@@ -805,6 +828,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
         box_parameters["expression.0"] = context.where.condition;
         box_parameters["pass-on-false-port"] = "0";
 
+        this->dump_box_parameters(context.query_name + "_filter", box_parameters);
         add_conger_box(context.query_name + "_filter", "filter", context.from_stream.stream_name,
                 context.query_name + "intermediate_outputstream", box_parameters);
 
@@ -837,6 +861,8 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             }
         }
 
+        box_parameters["slack"] = "0";
+
         /* 判断一下有没有 group by 语句 */
         if (context.has_group_by)
         {
@@ -844,6 +870,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             if (window.type == CQL::VALUES)
             {
                 box_parameters["window-size-by"] = "VALUES";
+                box_parameters["timeout"] = lexical_cast<string>(window.range);
                 /* XXX 时间单位的换算有问题 */
                 box_parameters["window-size"] = lexical_cast<string>(window.range);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -853,7 +880,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             else
             {
                 box_parameters["window-size-by"] = "TUPLES";
-                box_parameters["window-size"] = lexical_cast<string>(window.range);
+                box_parameters["window-size"] = lexical_cast<string>(window.row);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
                 box_parameters["order-by"] = "TUPLENUM";
             }
@@ -876,6 +903,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             if (window.type == CQL::VALUES)
             {
                 box_parameters["window-size-by"] = "VALUES";
+                box_parameters["timeout"] = lexical_cast<string>(window.range);
                 /* XXX 时间单位的换算有问题 */
                 box_parameters["window-size"] = lexical_cast<string>(window.range);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
@@ -885,7 +913,7 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             else
             {
                 box_parameters["window-size-by"] = "TUPLES";
-                box_parameters["window-size"] = lexical_cast<string>(window.range);
+                box_parameters["window-size"] = lexical_cast<string>(window.row);
                 box_parameters["advance"] = lexical_cast<string>(window.slide);
                 box_parameters["order-by"] = "TUPLENUM";
             }
@@ -903,10 +931,34 @@ void QueryProcessor::transform_cql_multi_boxes(ParseContext& context)
             }
         }
 
+        this->dump_box_parameters(context.query_name + "_aggregate", box_parameters);
         add_conger_box(context.query_name + "_aggregate", "aggregate",
                 context.query_name + "intermediate_outputstream", context.output_stream, box_parameters);
     }
 
+}
+
+void QueryProcessor::dump_box_parameters(string box_name, map<string, string> box_parameters)
+{
+    ofstream filestr;
+
+    INFO << "I am in dump box parameters, can you see me";
+    filestr.open("/home/jj/box_parameters.txt", fstream::out | fstream::app);
+
+    if (!filestr.good())
+    {
+        INFO << "can not open file";
+    }
+    filestr << box_name << endl;
+    map<string, string>::iterator iter = box_parameters.begin();
+    for ( ; iter != box_parameters.end(); iter++)
+    {
+        filestr << iter->first << "  " << iter->second << endl;
+    }
+
+    filestr << endl << endl << endl;
+    filestr.flush();
+    filestr.close();
 }
 
 BOREALIS_NAMESPACE_END
